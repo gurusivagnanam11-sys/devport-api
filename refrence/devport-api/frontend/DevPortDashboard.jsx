@@ -9,12 +9,10 @@ import {
   Trash2,
   RotateCw,
   ChevronRight,
+  Users,
   LogOut,
   Loader2,
   AlertCircle,
-  Pencil,
-  Users,
-  Webhook,
 } from "lucide-react";
 import {
   LineChart,
@@ -29,17 +27,21 @@ import {
 } from "recharts";
 
 // ============================================================================
-// API CLIENT — matches the FastAPI backend routers exactly.
-// Change API_BASE to your deployed URL.
+// API CLIENT — matches your FastAPI backend exactly (app/auth, app/workspaces,
+// app/api_keys, app/analytics routers). Change API_BASE to your deployed URL.
 // ============================================================================
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://localhost:8000"; // e.g. https://devport-api-production.up.railway.app
 
 function useApi() {
   const [accessToken, setAccessToken] = useState(() => localStorage_getSafe("dp_access_token"));
   const [refreshToken, setRefreshToken] = useState(() => localStorage_getSafe("dp_refresh_token"));
 
-  function localStorage_getSafe(key) {
+  // NOTE: DevPort artifacts can't use real localStorage — this is a safe in-memory
+  // shim. When you paste this into your own project (outside the artifacts
+  // environment), swap localStorage_getSafe/Set for real window.localStorage calls
+  // so the session survives a page refresh.
+  function localStorage_getSafe() {
     return null;
   }
 
@@ -61,6 +63,7 @@ function useApi() {
       const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
       if (res.status === 401 && refreshToken && !options._retried) {
+        // access token expired — try the refresh flow once
         const refreshRes = await fetch(`${API_BASE}/auth/refresh?refresh_token=${refreshToken}`, {
           method: "POST",
         });
@@ -95,6 +98,10 @@ function useApi() {
   return { accessToken, setTokens, clearTokens, request, isAuthed: !!accessToken };
 }
 
+// ============================================================================
+// Shared UI atoms
+// ============================================================================
+
 function Badge({ active }) {
   return (
     <span
@@ -104,19 +111,6 @@ function Badge({ active }) {
     >
       <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-emerald-400" : "bg-neutral-600"}`} />
       {active ? "Active" : "Revoked"}
-    </span>
-  );
-}
-
-function RolePill({ role }) {
-  const isAdmin = role === "admin";
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium uppercase tracking-wide ${
-        isAdmin ? "bg-blue-500/10 text-blue-400" : "bg-neutral-700/40 text-neutral-500"
-      }`}
-    >
-      {role || "Member"}
     </span>
   );
 }
@@ -154,10 +148,14 @@ function Spinner() {
   );
 }
 
+// ============================================================================
+// Login / Register — POST /auth/login, POST /auth/register
+// ============================================================================
+
 function LoginScreen({ api, onAuthed }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState("login"); // "login" | "register"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -166,11 +164,13 @@ function LoginScreen({ api, onAuthed }) {
     setLoading(true);
     try {
       if (mode === "register") {
+        // POST /auth/register expects { email, password } -> UserResponse
         await api.request("/auth/register", {
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
       }
+      // POST /auth/login expects { email, password } -> Token { access_token, refresh_token, token_type }
       const data = await api.request("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
@@ -248,27 +248,31 @@ function LoginScreen({ api, onAuthed }) {
           </button>
         </div>
 
-        <p className="text-center text-neutral-600 text-xs mt-6 font-mono">{API_BASE}/auth/login</p>
+        <p className="text-center text-neutral-600 text-xs mt-6 font-mono">
+          {API_BASE}/auth/login
+        </p>
       </div>
     </div>
   );
 }
 
-function WorkspacesView({ api, onSelect, selectedId, workspaceRole }) {
+// ============================================================================
+// Workspaces — GET/POST /workspaces/
+// ============================================================================
+
+function WorkspacesView({ api, onSelect, selectedId }) {
   const [workspaces, setWorkspaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editingName, setEditingName] = useState("");
-  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      // GET /workspaces/ -> list[WorkspaceResponse] { id, name, owner_id, created_at }
       const data = await api.request("/workspaces/");
       setWorkspaces(data);
       if (data.length && !selectedId) onSelect(data[0].id);
@@ -277,7 +281,7 @@ function WorkspacesView({ api, onSelect, selectedId, workspaceRole }) {
     } finally {
       setLoading(false);
     }
-  }, [api, onSelect, selectedId]);
+  }, [api]);
 
   useEffect(() => {
     load();
@@ -288,11 +292,12 @@ function WorkspacesView({ api, onSelect, selectedId, workspaceRole }) {
     setCreating(true);
     setError(null);
     try {
+      // POST /workspaces/ expects { name } -> WorkspaceResponse
       const ws = await api.request("/workspaces/", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name }),
       });
-      setWorkspaces((prev) => [ws, ...prev]);
+      setWorkspaces([ws, ...workspaces]);
       setName("");
       setShowNew(false);
       onSelect(ws.id);
@@ -300,49 +305,6 @@ function WorkspacesView({ api, onSelect, selectedId, workspaceRole }) {
       setError(e.message);
     } finally {
       setCreating(false);
-    }
-  };
-
-  const startEdit = (ws) => {
-    setEditingId(ws.id);
-    setEditingName(ws.name);
-    setDeleteConfirmId(null);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditingName("");
-  };
-
-  const saveRename = async (ws) => {
-    if (!editingName.trim()) return;
-    setError(null);
-    try {
-      const updated = await api.request(`/workspaces/${ws.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ name: editingName.trim() }),
-      });
-      setWorkspaces((prev) => prev.map((item) => (item.id === ws.id ? updated : item)));
-      cancelEdit();
-    } catch (e) {
-      setError(e.message);
-    }
-  };
-
-  const deleteWorkspace = async (ws) => {
-    if (deleteConfirmId !== ws.id) {
-      setDeleteConfirmId(ws.id);
-      return;
-    }
-
-    setError(null);
-    try {
-      await api.request(`/workspaces/${ws.id}`, { method: "DELETE" });
-      setWorkspaces((prev) => prev.filter((item) => item.id !== ws.id));
-      if (selectedId === ws.id) onSelect(null);
-      setDeleteConfirmId(null);
-    } catch (e) {
-      setError(e.message);
     }
   };
 
@@ -392,76 +354,38 @@ function WorkspacesView({ api, onSelect, selectedId, workspaceRole }) {
       ) : (
         <div className="grid gap-3">
           {workspaces.map((ws) => (
-            <div
+            <button
               key={ws.id}
-              className={`bg-[#111418] border rounded-xl p-4 transition-colors ${
+              onClick={() => onSelect(ws.id)}
+              className={`flex items-center justify-between text-left bg-[#111418] border rounded-xl p-4 transition-colors ${
                 selectedId === ws.id
                   ? "border-blue-500/50 ring-1 ring-blue-500/20"
                   : "border-white/[0.06] hover:border-white/[0.12]"
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <button
-                  onClick={() => onSelect(ws.id)}
-                  className="flex-1 flex items-center gap-3.5 text-left"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
-                    <LayoutGrid size={16} className="text-neutral-400" />
-                  </div>
-                  <div>
-                    <div className="text-white text-sm font-medium">{ws.name}</div>
-                    <div className="text-neutral-500 text-xs mt-0.5">
-                      Created {new Date(ws.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                </button>
-                {workspaceRole === "admin" && (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => startEdit(ws)}
-                      className="p-1.5 text-neutral-500 hover:text-blue-400 hover:bg-white/[0.04] rounded-md transition-colors"
-                      title="Rename"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => deleteWorkspace(ws)}
-                      className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
-                      title={deleteConfirmId === ws.id ? "Click again to confirm" : "Delete"}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
-              </div>
-              {editingId === ws.id && (
-                <div className="mt-3 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    className="flex-1 bg-[#0B0D10] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                  />
-                  <button
-                    onClick={() => saveRename(ws)}
-                    className="bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={cancelEdit}
-                    className="text-neutral-500 hover:text-neutral-300 text-sm px-2 py-2 transition-colors"
-                  >
-                    Cancel
-                  </button>
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center">
+                  <LayoutGrid size={16} className="text-neutral-400" />
                 </div>
-              )}
-            </div>
+                <div>
+                  <div className="text-white text-sm font-medium">{ws.name}</div>
+                  <div className="text-neutral-500 text-xs mt-0.5">
+                    Created {new Date(ws.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-neutral-600" />
+            </button>
           ))}
         </div>
       )}
     </div>
   );
 }
+
+// ============================================================================
+// API Keys — GET/POST /workspaces/{id}/api-keys/, POST .../revoke, .../rotate
+// ============================================================================
 
 function ApiKeysView({ api, workspaceId }) {
   const [keys, setKeys] = useState([]);
@@ -478,6 +402,7 @@ function ApiKeysView({ api, workspaceId }) {
     setLoading(true);
     setError(null);
     try {
+      // GET /workspaces/{id}/api-keys/ -> list[ApiKeyResponse]
       const data = await api.request(`/workspaces/${workspaceId}/api-keys/`);
       setKeys(data);
     } catch (e) {
@@ -496,6 +421,7 @@ function ApiKeysView({ api, workspaceId }) {
     setCreating(true);
     setError(null);
     try {
+      // POST /workspaces/{id}/api-keys/ expects { name } -> ApiKeyCreateResponse (includes raw_key ONCE)
       const created = await api.request(`/workspaces/${workspaceId}/api-keys/`, {
         method: "POST",
         body: JSON.stringify({ name }),
@@ -514,6 +440,7 @@ function ApiKeysView({ api, workspaceId }) {
   const revokeKey = async (keyId) => {
     setError(null);
     try {
+      // POST /workspaces/{id}/api-keys/{key_id}/revoke -> ApiKeyResponse
       await api.request(`/workspaces/${workspaceId}/api-keys/${keyId}/revoke`, { method: "POST" });
       await load();
     } catch (e) {
@@ -524,6 +451,7 @@ function ApiKeysView({ api, workspaceId }) {
   const rotateKey = async (keyId) => {
     setError(null);
     try {
+      // POST /workspaces/{id}/api-keys/{key_id}/rotate -> ApiKeyCreateResponse (new raw_key ONCE)
       const rotated = await api.request(`/workspaces/${workspaceId}/api-keys/${keyId}/rotate`, {
         method: "POST",
       });
@@ -675,319 +603,9 @@ function ApiKeysView({ api, workspaceId }) {
   );
 }
 
-function MembersView({ api, workspaceId, workspaceRole }) {
-  const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [userId, setUserId] = useState("");
-  const [role, setRole] = useState("member");
-  const [inviting, setInviting] = useState(false);
-  const [removingId, setRemovingId] = useState(null);
-
-  const load = useCallback(async () => {
-    if (!workspaceId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.request(`/workspaces/${workspaceId}/members`);
-      setMembers(data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, workspaceId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const inviteMember = async () => {
-    if (!workspaceId || !userId.trim()) return;
-    setInviting(true);
-    setError(null);
-    try {
-      const member = await api.request(`/workspaces/${workspaceId}/members`, {
-        method: "POST",
-        body: JSON.stringify({ user_id: Number(userId), role }),
-      });
-      setMembers((prev) => [member, ...prev]);
-      setUserId("");
-      setRole("member");
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setInviting(false);
-    }
-  };
-
-  const removeMember = async (memberId) => {
-    if (!workspaceId) return;
-    setRemovingId(memberId);
-    setError(null);
-    try {
-      await api.request(`/workspaces/${workspaceId}/members/${memberId}`, { method: "DELETE" });
-      setMembers((prev) => prev.filter((member) => member.id !== memberId));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setRemovingId(null);
-    }
-  };
-
-  if (!workspaceId) {
-    return (
-      <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-10 text-center">
-        <p className="text-neutral-500 text-sm">Select a workspace first.</p>
-      </div>
-    );
-  }
-
-  if (loading) return <Spinner />;
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Members</h1>
-          <p className="text-sm text-neutral-500 mt-1">Invite collaborators and manage workspace roles.</p>
-        </div>
-      </div>
-
-      <ErrorBanner message={error} onDismiss={() => setError(null)} />
-
-      {workspaceRole === "admin" ? (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-4 mb-5 flex flex-col gap-3 md:flex-row md:items-center">
-          <input
-            type="number"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder="User ID"
-            className="flex-1 bg-[#0B0D10] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="bg-[#0B0D10] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button
-            onClick={inviteMember}
-            disabled={inviting || !userId.trim()}
-            className="bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-          >
-            {inviting && <Loader2 size={13} className="animate-spin" />}
-            Invite member
-          </button>
-        </div>
-      ) : (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-4 mb-5 text-sm text-neutral-500">
-          Only admins can invite or remove workspace members.
-        </div>
-      )}
-
-      {members.length === 0 ? (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-10 text-center">
-          <p className="text-neutral-500 text-sm">No members yet for this workspace.</p>
-        </div>
-      ) : (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/[0.06] text-neutral-500 text-xs">
-                <th className="text-left font-medium px-4 py-3">User ID</th>
-                <th className="text-left font-medium px-4 py-3">Role</th>
-                <th className="text-left font-medium px-4 py-3">Joined</th>
-                <th className="text-right font-medium px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((member) => (
-                <tr key={member.id} className="border-b border-white/[0.04] last:border-0">
-                  <td className="px-4 py-3 text-white font-medium">{member.user_id}</td>
-                  <td className="px-4 py-3">
-                    <RolePill role={member.role} />
-                  </td>
-                  <td className="px-4 py-3 text-neutral-500 text-xs">
-                    {new Date(member.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    {workspaceRole === "admin" && (
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => removeMember(member.id)}
-                          disabled={removingId === member.id}
-                          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
-                          title="Remove member"
-                        >
-                          {removingId === member.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WebhooksView({ api, workspaceId, workspaceRole }) {
-  const [webhooks, setWebhooks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [url, setUrl] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [deactivatingId, setDeactivatingId] = useState(null);
-
-  const load = useCallback(async () => {
-    if (!workspaceId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.request(`/workspaces/${workspaceId}/webhooks/`);
-      setWebhooks(data);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, workspaceId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const addWebhook = async () => {
-    if (!workspaceId || !url.trim()) return;
-    setCreating(true);
-    setError(null);
-    try {
-      await api.request(`/workspaces/${workspaceId}/webhooks/`, {
-        method: "POST",
-        body: JSON.stringify({ url: url.trim() }),
-      });
-      setUrl("");
-      await load();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const deactivateWebhook = async (webhookId) => {
-    if (!workspaceId) return;
-    setDeactivatingId(webhookId);
-    setError(null);
-    try {
-      await api.request(`/workspaces/${workspaceId}/webhooks/${webhookId}`, { method: "DELETE" });
-      await load();
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setDeactivatingId(null);
-    }
-  };
-
-  if (!workspaceId) {
-    return (
-      <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-10 text-center">
-        <p className="text-neutral-500 text-sm">Select a workspace first.</p>
-      </div>
-    );
-  }
-
-  if (loading) return <Spinner />;
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-white">Webhooks</h1>
-          <p className="text-sm text-neutral-500 mt-1">Register endpoints for outbound event delivery.</p>
-        </div>
-      </div>
-
-      <ErrorBanner message={error} onDismiss={() => setError(null)} />
-
-      {workspaceRole === "admin" ? (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-4 mb-5 flex items-center gap-3">
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com/webhook"
-            onKeyDown={(e) => e.key === "Enter" && addWebhook()}
-            className="flex-1 bg-[#0B0D10] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-          <button
-            onClick={addWebhook}
-            disabled={creating || !url.trim()}
-            className="bg-blue-500 hover:bg-blue-400 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
-          >
-            {creating && <Loader2 size={13} className="animate-spin" />}
-            Add webhook
-          </button>
-        </div>
-      ) : (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-4 mb-5 text-sm text-neutral-500">
-          Only admins can configure workspace webhooks.
-        </div>
-      )}
-
-      {webhooks.length === 0 ? (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-10 text-center">
-          <p className="text-neutral-500 text-sm">No webhooks registered for this workspace.</p>
-        </div>
-      ) : (
-        <div className="bg-[#111418] border border-white/[0.06] rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/[0.06] text-neutral-500 text-xs">
-                <th className="text-left font-medium px-4 py-3">URL</th>
-                <th className="text-left font-medium px-4 py-3">Status</th>
-                <th className="text-left font-medium px-4 py-3">Created</th>
-                <th className="text-right font-medium px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {webhooks.map((hook) => (
-                <tr key={hook.id} className="border-b border-white/[0.04] last:border-0">
-                  <td className="px-4 py-3 text-white font-medium break-all">{hook.url}</td>
-                  <td className="px-4 py-3">
-                    <Badge active={hook.is_active} />
-                  </td>
-                  <td className="px-4 py-3 text-neutral-500 text-xs">
-                    {new Date(hook.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3">
-                    {workspaceRole === "admin" && (
-                      <div className="flex justify-end">
-                        <button
-                          onClick={() => deactivateWebhook(hook.id)}
-                          disabled={deactivatingId === hook.id}
-                          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
-                          title="Deactivate webhook"
-                        >
-                          {deactivatingId === hook.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
+// ============================================================================
+// Analytics — GET /workspaces/{id}/analytics/
+// ============================================================================
 
 function AnalyticsView({ api, workspaceId }) {
   const [data, setData] = useState(null);
@@ -1000,6 +618,8 @@ function AnalyticsView({ api, workspaceId }) {
       setLoading(true);
       setError(null);
       try {
+        // GET /workspaces/{id}/analytics/ -> WorkspaceAnalytics
+        // { total_requests, avg_latency_ms, top_endpoints[], daily_usage[] }
         const result = await api.request(`/workspaces/${workspaceId}/analytics/`);
         setData(result);
       } catch (e) {
@@ -1022,6 +642,7 @@ function AnalyticsView({ api, workspaceId }) {
   if (error) return <ErrorBanner message={error} />;
   if (!data) return null;
 
+  // daily_usage comes back newest-first from the backend; reverse for a left-to-right chart
   const dailyChart = [...data.daily_usage].reverse().map((d) => ({
     date: new Date(d.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
     requests: d.request_count,
@@ -1097,29 +718,21 @@ function AnalyticsView({ api, workspaceId }) {
   );
 }
 
+// ============================================================================
+// App shell
+// ============================================================================
+
 export default function DevPortDashboard() {
   const api = useApi();
   const [page, setPage] = useState("workspaces");
   const [selectedWs, setSelectedWs] = useState(null);
-  const [workspaceRole, setWorkspaceRole] = useState(null);
+  const [workspaceName, setWorkspaceName] = useState("");
 
+  // Keep the sidebar's workspace label in sync without an extra request —
+  // WorkspacesView already fetched the list, so just track the selected name here.
   useEffect(() => {
-    if (!selectedWs) {
-      setWorkspaceRole(null);
-      return;
-    }
-
-    (async () => {
-      try {
-        const me = await api.request("/auth/me");
-        const members = await api.request(`/workspaces/${selectedWs}/members`);
-        const selfMember = members.find((member) => member.user_id === me.id);
-        setWorkspaceRole(selfMember ? selfMember.role : null);
-      } catch (_) {
-        setWorkspaceRole(null);
-      }
-    })();
-  }, [api, selectedWs]);
+    setWorkspaceName("");
+  }, [selectedWs]);
 
   if (!api.isAuthed) {
     return <LoginScreen api={api} onAuthed={() => setPage("workspaces")} />;
@@ -1127,14 +740,13 @@ export default function DevPortDashboard() {
 
   const nav = [
     { id: "workspaces", label: "Workspaces", icon: LayoutGrid },
-    { id: "members", label: "Members", icon: Users },
     { id: "keys", label: "API Keys", icon: KeyRound },
-    { id: "webhooks", label: "Webhooks", icon: Webhook },
     { id: "analytics", label: "Analytics", icon: BarChart3 },
   ];
 
   return (
     <div className="min-h-screen bg-[#0B0D10] flex font-sans">
+      {/* Sidebar */}
       <aside className="w-60 border-r border-white/[0.06] flex flex-col shrink-0">
         <div className="flex items-center gap-2.5 px-5 py-5">
           <div className="w-7 h-7 rounded-md bg-blue-500 flex items-center justify-center">
@@ -1152,7 +764,9 @@ export default function DevPortDashboard() {
                 key={item.id}
                 onClick={() => setPage(item.id)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium mb-0.5 transition-colors ${
-                  active ? "bg-blue-500/10 text-blue-400" : "text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.03]"
+                  active
+                    ? "bg-blue-500/10 text-blue-400"
+                    : "text-neutral-500 hover:text-neutral-300 hover:bg-white/[0.03]"
                 }`}
               >
                 <Icon size={16} />
@@ -1167,11 +781,6 @@ export default function DevPortDashboard() {
             <div className="px-3 py-2.5 rounded-lg bg-white/[0.02] mb-2">
               <div className="text-xs text-neutral-500">Workspace</div>
               <div className="text-sm text-white font-medium mt-0.5">#{selectedWs}</div>
-              {workspaceRole && (
-                <div className="mt-2">
-                  <RolePill role={workspaceRole} />
-                </div>
-              )}
             </div>
           )}
           <button
@@ -1183,13 +792,12 @@ export default function DevPortDashboard() {
         </div>
       </aside>
 
+      {/* Main content */}
       <main className="flex-1 p-8 max-w-5xl overflow-y-auto">
         {page === "workspaces" && (
-          <WorkspacesView api={api} selectedId={selectedWs} onSelect={setSelectedWs} workspaceRole={workspaceRole} />
+          <WorkspacesView api={api} selectedId={selectedWs} onSelect={setSelectedWs} />
         )}
-        {page === "members" && <MembersView api={api} workspaceId={selectedWs} workspaceRole={workspaceRole} />}
         {page === "keys" && <ApiKeysView api={api} workspaceId={selectedWs} />}
-        {page === "webhooks" && <WebhooksView api={api} workspaceId={selectedWs} workspaceRole={workspaceRole} />}
         {page === "analytics" && <AnalyticsView api={api} workspaceId={selectedWs} />}
       </main>
     </div>

@@ -1,10 +1,7 @@
-import json
 import secrets
-from datetime import datetime, timezone
-
+import json
 from sqlalchemy.orm import Session
-
-from app.webhooks.models import DeadLetterJob, WebhookDelivery, WebhookEndpoint
+from app.webhooks.models import WebhookEndpoint, WebhookDelivery, DeadLetterJob
 
 
 def create_webhook(db: Session, workspace_id: int, url: str) -> WebhookEndpoint:
@@ -44,6 +41,15 @@ def create_delivery(db: Session, endpoint_id: int, event_type: str, payload: dic
     db.add(delivery)
     db.commit()
     db.refresh(delivery)
+
+    # Rebuild payload to include the delivery's own ID, so receivers can
+    # deduplicate if the same delivery is ever sent more than once
+    # (Celery/task queues guarantee at-least-once delivery, not exactly-once).
+    full_payload = {**payload, "delivery_id": delivery.id}
+    delivery.payload = json.dumps(full_payload)
+    db.commit()
+    db.refresh(delivery)
+
     return delivery
 
 
@@ -52,6 +58,7 @@ def mark_delivery_result(db: Session, delivery: WebhookDelivery, status_code: in
     delivery.success = success
     delivery.attempt_count += 1
     if success:
+        from datetime import datetime, timezone
         delivery.delivered_at = datetime.now(timezone.utc)
     db.commit()
 
@@ -60,7 +67,3 @@ def send_to_dead_letter(db: Session, delivery_id: int, reason: str):
     entry = DeadLetterJob(delivery_id=delivery_id, reason=reason)
     db.add(entry)
     db.commit()
-
-
-def get_recent_deliveries(db: Session, endpoint_id: int, limit: int = 50):
-    return db.query(WebhookDelivery).filter(WebhookDelivery.endpoint_id == endpoint_id).order_by(WebhookDelivery.created_at.desc()).limit(limit).all()

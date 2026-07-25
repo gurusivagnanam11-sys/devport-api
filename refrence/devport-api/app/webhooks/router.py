@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
 from app.core.database import get_db
-from app.webhooks import schemas, service
 from app.workspaces.dependencies import get_scoped_workspace, require_permission
+from app.webhooks import schemas, service
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/webhooks", tags=["webhooks"])
 
@@ -40,16 +39,3 @@ def delete_webhook(
     if not endpoint:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
     service.deactivate_webhook(db, endpoint)
-
-
-@router.get("/{webhook_id}/deliveries", response_model=list[schemas.DeliveryResponse])
-def list_webhook_deliveries(
-    workspace_id: int,
-    webhook_id: int,
-    db: Session = Depends(get_db),
-    workspace=Depends(get_scoped_workspace),
-):
-    endpoint = service.get_webhook(db, workspace_id, webhook_id)
-    if not endpoint:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
-    return service.get_recent_deliveries(db, webhook_id)

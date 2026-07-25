@@ -1,6 +1,5 @@
 from celery import Celery
 from celery.schedules import crontab
-
 from app.core.config import settings
 
 celery_app = Celery(
@@ -20,10 +19,6 @@ celery_app.conf.update(
 celery_app.conf.beat_schedule = {
     "cleanup-old-webhook-deliveries-daily": {
         "task": "app.webhooks.tasks.cleanup_old_deliveries",
-        "schedule": crontab(hour=3, minute=0),
+        "schedule": crontab(hour=3, minute=0),  # 3 AM UTC daily
     },
 }
-
-# Import task modules so their @celery_app.task-decorated functions register
-# with this app. Must come AFTER celery_app is created above.
-from app.webhooks import tasks  # noqa: E402,F401
