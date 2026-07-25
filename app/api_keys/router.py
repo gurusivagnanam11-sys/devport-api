@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -27,8 +29,17 @@ def create_key(
                 db,
                 endpoint.id,
                 event_type="api_key.created",
-                payload={"event": "api_key.created", "key_id": api_key.id, "key_prefix": api_key.key_prefix},
+                payload={"key_id": api_key.id, "key_prefix": api_key.key_prefix},
             )
+            delivery.payload = json.dumps(
+                {
+                    "delivery_id": delivery.id,
+                    "event": "api_key.created",
+                    "key_id": api_key.id,
+                    "key_prefix": api_key.key_prefix,
+                }
+            )
+            db.commit()
             deliver_webhook.delay(delivery.id)
 
     return schemas.ApiKeyCreateResponse(

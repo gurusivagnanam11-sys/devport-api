@@ -1,5 +1,6 @@
+from datetime import datetime, timedelta, timezone
+
 import requests
-from celery import shared_task
 
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
@@ -56,8 +57,6 @@ def cleanup_old_deliveries():
     """Delete delivery records older than 30 days to keep the table small."""
     db = SessionLocal()
     try:
-        from datetime import datetime, timedelta, timezone
-
         cutoff = datetime.now(timezone.utc) - timedelta(days=30)
         db.query(WebhookDelivery).filter(WebhookDelivery.created_at < cutoff).delete()
         db.commit()
