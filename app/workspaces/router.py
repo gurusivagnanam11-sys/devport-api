@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.workspaces import schemas, service
-from app.workspaces.dependencies import require_membership, require_admin, get_workspace_or_404
+from app.workspaces.dependencies import require_membership, require_permission, get_workspace_or_404
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -42,7 +42,7 @@ def update_workspace(
     payload: schemas.WorkspaceUpdate,
     db: Session = Depends(get_db),
     workspace=Depends(get_workspace_or_404),
-    membership=Depends(require_admin),
+    membership=Depends(require_permission("workspace:update")),
 ):
     return service.update_workspace(db, workspace, payload.name)
 
@@ -52,7 +52,7 @@ def delete_workspace(
     workspace_id: int,
     db: Session = Depends(get_db),
     workspace=Depends(get_workspace_or_404),
-    membership=Depends(require_admin),
+    membership=Depends(require_permission("workspace:delete")),
 ):
     service.delete_workspace(db, workspace)
 
@@ -63,7 +63,7 @@ def invite_member(
     payload: schemas.MemberInvite,
     db: Session = Depends(get_db),
     workspace=Depends(get_workspace_or_404),
-    membership=Depends(require_admin),
+    membership=Depends(require_permission("member:invite")),
 ):
     try:
         return service.add_member(db, workspace_id, payload.user_id, payload.role)
@@ -87,11 +87,11 @@ def remove_member(
     member_id: int,
     db: Session = Depends(get_db),
     workspace=Depends(get_workspace_or_404),
-    membership=Depends(require_admin),
+    membership=Depends(require_permission("member:remove")),
 ):
-    target = db.query(service.WorkspaceMember).filter(
-        service.WorkspaceMember.id == member_id,
-        service.WorkspaceMember.workspace_id == workspace_id,
+    target = db.query(WorkspaceMember).filter(
+        WorkspaceMember.id == member_id,
+        WorkspaceMember.workspace_id == workspace_id,
     ).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
