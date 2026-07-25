@@ -1,6 +1,8 @@
 venv/
-.env
-.env.docker
 __pycache__/
 *.pyc
+.git/
+.env
+.env.docker
 .pytest_cache/
+tests/

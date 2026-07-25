@@ -1,0 +1,61 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: devport_user
+      POSTGRES_PASSWORD: devport_pass
+      POSTGRES_DB: devport
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devport_user -d devport"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build: .
+    restart: always
+    command: celery -A app.core.celery_app worker --loglevel=info
+    env_file:
+      - .env.docker
+    depends_on:
+      - db
+      - redis
+
+  beat:
+    build: .
+    restart: always
+    command: celery -A app.core.celery_app beat --loglevel=info
+    env_file:
+      - .env.docker
+    depends_on:
+      - db
+      - redis
+
+volumes:
+  postgres_data:
