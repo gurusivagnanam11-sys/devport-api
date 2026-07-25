@@ -15,6 +15,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Webhook,
+  Pencil,
 } from "lucide-react";
 import {
   LineChart,
@@ -172,6 +173,7 @@ function LoginScreen({ api, onAuthed }) {
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [errorType, setErrorType] = useState("error");
 
   const submit = async () => {
     setError(null);
@@ -277,7 +279,7 @@ function LoginScreen({ api, onAuthed }) {
 // Workspaces — GET/POST /workspaces/
 // ============================================================================
 
-function WorkspacesView({ api, onSelect, selectedId }) {
+function WorkspacesView({ api, onSelect, selectedId, currentUserId }) {
   const [workspaces, setWorkspaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -288,12 +290,13 @@ function WorkspacesView({ api, onSelect, selectedId }) {
   const [testPanelOpen, setTestPanelOpen] = useState(false);
   const [testId, setTestId] = useState("");
   const [testResult, setTestResult] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // GET /workspaces/ -> list[WorkspaceResponse] { id, name, owner_id, created_at }
       const data = await api.request("/workspaces/");
       setWorkspaces(data);
       if (data.length && !selectedId) onSelect(data[0].id);
@@ -314,7 +317,6 @@ function WorkspacesView({ api, onSelect, selectedId }) {
     setCreating(true);
     setError(null);
     try {
-      // POST /workspaces/ expects { name } -> WorkspaceResponse
       const ws = await api.request("/workspaces/", {
         method: "POST",
         body: JSON.stringify({ name }),
@@ -328,6 +330,37 @@ function WorkspacesView({ api, onSelect, selectedId }) {
       setErrorType(e.isRateLimit ? "warning" : "error");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const updateWorkspace = async (id) => {
+    if (!editName.trim()) return;
+    setError(null);
+    try {
+      const ws = await api.request(`/workspaces/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: editName }),
+      });
+      setWorkspaces(workspaces.map(w => w.id === id ? ws : w));
+      setEditingId(null);
+    } catch (e) {
+      setError(e.message);
+      setErrorType(e.isRateLimit ? "warning" : "error");
+    }
+  };
+
+  const deleteWorkspace = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this workspace?")) return;
+    setError(null);
+    try {
+      await api.request(`/workspaces/${id}`, { method: "DELETE" });
+      setWorkspaces(workspaces.filter(w => w.id !== id));
+      if (selectedId === id) {
+        onSelect(null);
+      }
+    } catch (e) {
+      setError(e.message);
+      setErrorType(e.isRateLimit ? "warning" : "error");
     }
   };
 
@@ -371,7 +404,7 @@ function WorkspacesView({ api, onSelect, selectedId }) {
       )}
 
       {/* DEV PANEL FOR MODULE 10 */}
-      <div className="mt-8 border-t border-white/[0.06] pt-6">
+      <div className="mt-8 border-t border-white/[0.06] pt-6 mb-8">
         <button 
           onClick={() => setTestPanelOpen(!testPanelOpen)}
           className="text-xs font-mono text-neutral-500 hover:text-white flex items-center gap-2 transition-colors mb-4"
@@ -398,7 +431,8 @@ function WorkspacesView({ api, onSelect, selectedId }) {
                       headers: { "Authorization": `Bearer ${api.accessToken}` }
                     });
                     const data = await res.json().catch(() => ({}));
-                    setTestResult(`Status: ${res.status}\nBody: ${JSON.stringify(data, null, 2)}`);
+                    setTestResult(`Status: ${res.status}
+Body: ${JSON.stringify(data, null, 2)}`);
                   } catch (err) {
                     setTestResult(`Error: ${err.message}`);
                   }
@@ -424,28 +458,81 @@ function WorkspacesView({ api, onSelect, selectedId }) {
       ) : (
         <div className="grid gap-3">
           {workspaces.map((ws) => (
-            <button
+            <div
               key={ws.id}
               onClick={() => onSelect(ws.id)}
-              className={`flex items-center justify-between text-left bg-[#111418] border rounded-xl p-4 transition-colors ${
+              className={`flex items-center justify-between text-left bg-[#111418] border rounded-xl p-4 transition-colors cursor-pointer ${
                 selectedId === ws.id
                   ? "border-blue-500/50 ring-1 ring-blue-500/20"
                   : "border-white/[0.06] hover:border-white/[0.12]"
               }`}
             >
-              <div className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center">
+              <div className="flex items-center gap-3.5 flex-1">
+                <div className="w-9 h-9 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
                   <LayoutGrid size={16} className="text-neutral-400" />
                 </div>
-                <div>
-                  <div className="text-white text-sm font-medium">{ws.name}</div>
-                  <div className="text-neutral-500 text-xs mt-0.5">
-                    Created {new Date(ws.created_at).toLocaleDateString()}
-                  </div>
+                <div className="flex-1">
+                  {editingId === ws.id ? (
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && updateWorkspace(ws.id)}
+                        className="bg-[#0B0D10] border border-white/[0.08] rounded-md px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500/50"
+                      />
+                      <button
+                        onClick={() => updateWorkspace(ws.id)}
+                        className="text-emerald-400 hover:text-emerald-300 text-xs font-medium"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="text-neutral-500 hover:text-neutral-300 text-xs font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-white text-sm font-medium">{ws.name}</div>
+                      <div className="text-neutral-500 text-xs mt-0.5">
+                        Created {new Date(ws.created_at).toLocaleDateString()}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
-              <ChevronRight size={16} className="text-neutral-600" />
-            </button>
+              <div className="flex items-center gap-2 pl-4">
+                {ws.owner_id === currentUserId && editingId !== ws.id && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditName(ws.name);
+                        setEditingId(ws.id);
+                      }}
+                      className="p-1.5 text-neutral-500 hover:text-white hover:bg-white/[0.04] rounded-md transition-colors"
+                      title="Edit"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteWorkspace(ws.id);
+                      }}
+                      className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </>
+                )}
+                {editingId !== ws.id && <ChevronRight size={16} className="text-neutral-600 ml-2" />}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -453,12 +540,11 @@ function WorkspacesView({ api, onSelect, selectedId }) {
   );
 }
 
-
 // ============================================================================
 // Members — GET/POST/DELETE /workspaces/{id}/members
 // ============================================================================
 
-function MembersView({ api, workspaceId }) {
+function MembersView({ api, workspaceId, myRole }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -536,17 +622,19 @@ function MembersView({ api, workspaceId }) {
           <h1 className="text-xl font-semibold text-white">Members</h1>
           <p className="text-sm text-neutral-500 mt-1">Manage team access to this workspace.</p>
         </div>
-        <button
-          onClick={() => setShowNew(!showNew)}
-          className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-400 transition-colors text-white text-sm font-medium px-3.5 py-2 rounded-lg"
-        >
-          <Plus size={15} /> Invite member
-        </button>
+        {myRole === 'admin' && (
+          <button
+            onClick={() => setShowNew(!showNew)}
+            className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-400 transition-colors text-white text-sm font-medium px-3.5 py-2 rounded-lg"
+          >
+            <Plus size={15} /> Invite member
+          </button>
+        )}
       </div>
 
       <ErrorBanner message={error} type={errorType} onDismiss={() => setError(null)} />
 
-      {showNew && (
+      {showNew && myRole === 'admin' && (
         <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-4 mb-5 flex items-center gap-3">
           <input
             type="number"
@@ -604,13 +692,15 @@ function MembersView({ api, workspaceId }) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 justify-end">
-                      <button
-                        title="Remove"
-                        onClick={() => removeMember(m.id)}
-                        className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {myRole === 'admin' && (
+                        <button
+                          title="Remove"
+                          onClick={() => removeMember(m.id)}
+                          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -891,7 +981,7 @@ function ApiKeysView({ api, workspaceId }) {
 // Webhooks — GET/POST /workspaces/{id}/webhooks/
 // ============================================================================
 
-function WebhooksView({ api, workspaceId }) {
+function WebhooksView({ api, workspaceId, myRole }) {
   const [webhooks, setWebhooks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -994,17 +1084,15 @@ function WebhooksView({ api, workspaceId }) {
           <h1 className="text-xl font-semibold text-white">Webhooks</h1>
           <p className="text-sm text-neutral-500 mt-1">Receive real-time updates.</p>
         </div>
-        <button
-          onClick={() => setShowNew(!showNew)}
+        {myRole === 'admin' && (<button onClick={() => setShowNew(!showNew)}
           className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-400 transition-colors text-white text-sm font-medium px-3.5 py-2 rounded-lg"
         >
-          <Plus size={15} /> Add endpoint
-        </button>
+          <Plus size={15} /> Add endpoint</button>)}
       </div>
 
       <ErrorBanner message={error} type={errorType} onDismiss={() => setError(null)} />
 
-      {showNew && (
+      {showNew && myRole === 'admin' && (
         <div className="bg-[#111418] border border-white/[0.06] rounded-xl p-4 mb-5 flex items-center gap-3">
           <input
             type="url"
@@ -1046,13 +1134,15 @@ function WebhooksView({ api, workspaceId }) {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => deleteWebhook(w.id)}
-                  className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
-                  title="Remove Webhook"
-                >
-                  <Trash2 size={14} />
-                </button>
+                {myRole === 'admin' && (
+                  <button
+                    onClick={() => deleteWebhook(w.id)}
+                    className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-white/[0.04] rounded-md transition-colors"
+                    title="Remove Webhook"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
               
               {expanded === w.id && (
@@ -1335,11 +1425,11 @@ export default function DevPortDashboard() {
       {/* Main content */}
       <main className="flex-1 p-8 max-w-5xl overflow-y-auto">
         {page === "workspaces" && (
-          <WorkspacesView api={api} selectedId={selectedWs} onSelect={setSelectedWs} />
+          <WorkspacesView api={api} selectedId={selectedWs} onSelect={setSelectedWs} currentUserId={currentUserId} />
         )}
-        {page === "members" && <MembersView api={api} workspaceId={selectedWs} />}
+        {page === "members" && <MembersView api={api} workspaceId={selectedWs} myRole={myRole} />}
         {page === "keys" && <ApiKeysView api={api} workspaceId={selectedWs} />}
-        {page === "webhooks" && <WebhooksView api={api} workspaceId={selectedWs} />}
+        {page === "webhooks" && <WebhooksView api={api} workspaceId={selectedWs} myRole={myRole} />}
         {page === "analytics" && <AnalyticsView api={api} workspaceId={selectedWs} />}
       </main>
     </div>
