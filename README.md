@@ -110,3 +110,15 @@ pytest -v
 ```
 
 Currently, **24 tests** are passing across the auth, security, api_keys, and workspaces modules.
+
+## Verified Working
+
+The following core modules have been manually verified end-to-end against a live running instance (FastAPI + PostgreSQL + Redis + Celery):
+
+- **Authentication**: Registration, login, JWT validation, and token refreshing.
+- **Workspace Management**: Creation, listing, updating, and deletion (including IDOR prevention).
+- **RBAC**: Enforcement of role-based permissions (admin vs. member).
+- **API Key Management**: Creation and raw-key validation against a protected sample endpoint.
+- **Rate Limiting**: Atomic, distributed 100 requests/day boundary enforced correctly using Redis Lua scripts.
+- **Usage Analytics**: Correct logging of usage counts, appropriately excluding rate-limited requests.
+- **Webhooks & Background Processing**: Event dispatch, HMAC signing, and asynchronous delivery via Celery to real public endpoints.
