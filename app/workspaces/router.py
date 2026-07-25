@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.workspaces import schemas, service
-from app.workspaces.dependencies import require_membership, require_permission, get_workspace_or_404
+from app.workspaces.dependencies import require_permission, get_scoped_workspace
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -30,8 +30,7 @@ def list_my_workspaces(
 @router.get("/{workspace_id}", response_model=schemas.WorkspaceResponse)
 def get_workspace(
     workspace_id: int,
-    workspace=Depends(get_workspace_or_404),
-    membership=Depends(require_membership),
+    workspace=Depends(get_scoped_workspace),
 ):
     return workspace
 
@@ -41,7 +40,7 @@ def update_workspace(
     workspace_id: int,
     payload: schemas.WorkspaceUpdate,
     db: Session = Depends(get_db),
-    workspace=Depends(get_workspace_or_404),
+    workspace=Depends(get_scoped_workspace),
     membership=Depends(require_permission("workspace:update")),
 ):
     return service.update_workspace(db, workspace, payload.name)
@@ -51,7 +50,7 @@ def update_workspace(
 def delete_workspace(
     workspace_id: int,
     db: Session = Depends(get_db),
-    workspace=Depends(get_workspace_or_404),
+    workspace=Depends(get_scoped_workspace),
     membership=Depends(require_permission("workspace:delete")),
 ):
     service.delete_workspace(db, workspace)
@@ -62,7 +61,7 @@ def invite_member(
     workspace_id: int,
     payload: schemas.MemberInvite,
     db: Session = Depends(get_db),
-    workspace=Depends(get_workspace_or_404),
+    workspace=Depends(get_scoped_workspace),
     membership=Depends(require_permission("member:invite")),
 ):
     try:
@@ -75,8 +74,7 @@ def invite_member(
 def get_members(
     workspace_id: int,
     db: Session = Depends(get_db),
-    workspace=Depends(get_workspace_or_404),
-    membership=Depends(require_membership),
+    workspace=Depends(get_scoped_workspace),
 ):
     return service.list_members(db, workspace_id)
 
@@ -86,7 +84,7 @@ def remove_member(
     workspace_id: int,
     member_id: int,
     db: Session = Depends(get_db),
-    workspace=Depends(get_workspace_or_404),
+    workspace=Depends(get_scoped_workspace),
     membership=Depends(require_permission("member:remove")),
 ):
     target = db.query(WorkspaceMember).filter(

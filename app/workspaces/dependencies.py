@@ -4,6 +4,7 @@ from app.core.database import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.workspaces import service
+from app.workspaces.models import Workspace
 
 from app.workspaces.permissions import role_has_permission
 
@@ -21,6 +22,24 @@ def require_permission(permission: str):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Missing permission: {permission}")
         return membership
     return dependency
+def get_scoped_workspace(
+    workspace_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Workspace:
+    """
+    Returns the workspace only if it exists and the current user is a member.
+    This avoids leaking whether a workspace exists to non-members.
+    """
+    workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    membership = service.get_membership(db, workspace_id, current_user.id)
+
+    if not workspace or not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    return workspace
+
+
 def get_workspace_or_404(workspace_id: int, db: Session = Depends(get_db)):
     workspace = service.get_workspace(db, workspace_id)
     if not workspace:
