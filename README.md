@@ -113,6 +113,8 @@ Currently, **24 tests** are passing across the auth, security, api_keys, and wor
 
 ## Verified Working
 
+See [docs/verification-report.md](./docs/verification-report.md) for detailed end-to-end verification evidence (live testing against a running instance).
+
 The following core modules have been manually verified end-to-end against a live running instance (FastAPI + PostgreSQL + Redis + Celery):
 
 - **Authentication**: Registration, login, JWT validation, and token refreshing.
