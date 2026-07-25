@@ -1,5 +1,11 @@
 from fastapi import FastAPI
-app= FastAPI(title="DevPort API Management Paltform")
+from app.auth.router import router as auth_router
+
+app = FastAPI(title="DevPort API Management Platform")
+
+app.include_router(auth_router)
+
+
 @app.get("/")
 def root():
-    return {"message": "Welcome to DevPort API Management Platform"}        
+    return {"message": "DevPort is running"}
