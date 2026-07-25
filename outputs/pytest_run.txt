@@ -1,0 +1,49 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0 -- /root/project/devport-api/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /root/project/devport-api
+configfile: pytest.ini
+plugins: asyncio-1.4.0, anyio-4.14.1, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 24 items
+
+tests/test_api_keys.py::test_generate_api_key_returns_prefixed_raw_key_and_hash PASSED [  4%]
+tests/test_api_keys.py::test_verify_api_key_matches_and_rejects_wrong_values PASSED [  8%]
+tests/test_auth.py::test_register_user PASSED                            [ 12%]
+tests/test_auth.py::test_register_duplicate_email_rejected PASSED        [ 16%]
+tests/test_auth.py::test_login_success PASSED                            [ 20%]
+tests/test_auth.py::test_login_wrong_password_rejected PASSED            [ 25%]
+tests/test_auth.py::test_login_nonexistent_user_rejected PASSED          [ 29%]
+tests/test_auth.py::test_protected_route_requires_token PASSED           [ 33%]
+tests/test_auth.py::test_protected_route_with_valid_token PASSED         [ 37%]
+tests/test_auth.py::test_protected_route_rejects_invalid_token PASSED    [ 41%]
+tests/test_security.py::test_password_hash_is_not_plaintext PASSED       [ 45%]
+tests/test_security.py::test_password_verify_correct_password PASSED     [ 50%]
+tests/test_security.py::test_password_verify_wrong_password PASSED       [ 54%]
+tests/test_security.py::test_access_token_roundtrip PASSED               [ 58%]
+tests/test_security.py::test_decode_invalid_token_returns_none PASSED    [ 62%]
+tests/test_security.py::test_api_key_generation_is_unique PASSED         [ 66%]
+tests/test_security.py::test_api_key_verify_correct_key PASSED           [ 70%]
+tests/test_security.py::test_api_key_verify_wrong_key_fails PASSED       [ 75%]
+tests/test_security.py::test_api_key_hash_is_deterministic PASSED        [ 79%]
+tests/test_workspaces.py::test_create_workspace PASSED                   [ 83%]
+tests/test_workspaces.py::test_creator_is_automatically_admin PASSED     [ 87%]
+tests/test_workspaces.py::test_non_member_cannot_access_workspace PASSED [ 91%]
+tests/test_workspaces.py::test_member_cannot_delete_workspace PASSED     [ 95%]
+tests/test_workspaces.py::test_admin_can_delete_workspace PASSED         [100%]
+
+=============================== warnings summary ===============================
+venv/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /root/project/devport-api/venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+app/core/config.py:4
+  /root/project/devport-api/app/core/config.py:4: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class Settings(BaseSettings):
+
+venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854
+  /root/project/devport-api/venv/lib/python3.12/site-packages/passlib/utils/__init__.py:854: DeprecationWarning: 'crypt' is deprecated and slated for removal in Python 3.13
+    from crypt import crypt as _crypt
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 24 passed, 3 warnings in 16.62s ========================
