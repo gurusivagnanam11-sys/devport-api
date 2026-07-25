@@ -11,6 +11,8 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from app.workspaces.models import Workspace, WorkspaceMember  # noqa
 from app.api_keys.models import ApiKey  # noqa
+from app.analytics.models import UsageLog  # noqa
+from app.webhooks.models import WebhookEndpoint, WebhookDelivery, DeadLetterJob  # noqa
 from alembic import context
 
 # this is the Alembic Config object, which provides

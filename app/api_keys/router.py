@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.api_keys import schemas, service
 from app.core.database import get_db
+from app.webhooks.service import create_delivery, list_webhooks
+from app.webhooks.tasks import deliver_webhook
 from app.workspaces.dependencies import get_scoped_workspace, require_permission
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/api-keys", tags=["api-keys"])
@@ -17,6 +19,18 @@ def create_key(
     membership=Depends(require_permission("apikey:create")),
 ):
     api_key, raw_key = service.create_api_key(db, workspace_id, payload.name, membership.user_id)
+
+    endpoints = list_webhooks(db, workspace_id)
+    for endpoint in endpoints:
+        if endpoint.is_active:
+            delivery = create_delivery(
+                db,
+                endpoint.id,
+                event_type="api_key.created",
+                payload={"event": "api_key.created", "key_id": api_key.id, "key_prefix": api_key.key_prefix},
+            )
+            deliver_webhook.delay(delivery.id)
+
     return schemas.ApiKeyCreateResponse(
         id=api_key.id,
         name=api_key.name,
