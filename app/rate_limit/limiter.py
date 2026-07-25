@@ -47,4 +47,8 @@ def check_rate_limit(key_id: int, limit: int | None, window_seconds: int) -> Rat
         allowed = result[0] == 1
         return RateLimitResult(allowed=allowed, current=current, retry_after=ttl)
     except Exception:
+        # FAIL OPEN: if Redis is unreachable, we allow requests rather than blocking
+        # all traffic platform-wide. Tradeoff: a Redis outage temporarily disables
+        # rate limiting rather than causing a full outage. Revisit if abuse risk
+        # during Redis downtime becomes a real concern.
         return RateLimitResult(allowed=True, current=0, retry_after=0)

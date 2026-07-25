@@ -21,7 +21,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
 
     user_id = payload.get("sub")
-    if user_id is None:
+    if user_id is None or not str(user_id).isdigit():
         raise credentials_exception
 
     user = get_user_by_id(db, int(user_id))
